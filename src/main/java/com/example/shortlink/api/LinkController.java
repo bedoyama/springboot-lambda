@@ -2,6 +2,7 @@ package com.example.shortlink.api;
 
 import com.example.shortlink.domain.Link;
 import com.example.shortlink.domain.LinkService;
+import com.example.shortlink.observability.ShortLinkMetrics;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.concurrent.TimeUnit;
 
 @RestController
 public class LinkController {
@@ -43,7 +45,9 @@ public class LinkController {
 
     @GetMapping("/r/{code}")
     public ResponseEntity<Void> redirect(@PathVariable String code) {
+        long started = System.nanoTime();
         Link link = links.redirect(code);
+        ShortLinkMetrics.redirect(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
         log.info("Redirect {}", code);
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(link.originalUrl()))

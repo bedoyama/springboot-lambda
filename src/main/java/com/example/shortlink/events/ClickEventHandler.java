@@ -5,6 +5,7 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SQSEvent;
 import com.example.shortlink.observability.AwsClientTracing;
 import com.example.shortlink.observability.MdcKeys;
+import com.example.shortlink.observability.ShortLinkMetrics;
 import com.example.shortlink.persistence.DynamoDbClickIncrement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +62,10 @@ public class ClickEventHandler implements RequestHandler<SQSEvent, Void> {
                         message.getMessageId(),
                         traceHeader);
                 boolean updated = DynamoDbClickIncrement.increment(dynamoDb, tableName, click.code()).isPresent();
-                if (!updated) {
+                if (updated) {
+                    ShortLinkMetrics.clickRecorded();
+                } else {
+                    ShortLinkMetrics.unknownClickCode();
                     log.warn(
                             "Click for unknown code {} correlationId={}, dropping message",
                             click.code(),
