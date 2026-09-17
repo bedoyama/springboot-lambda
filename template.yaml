@@ -11,6 +11,17 @@ Globals:
       - x86_64
 
 Resources:
+  ShortLinksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: code
+          KeyType: HASH
+
   ShortlinkFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -20,6 +31,13 @@ Resources:
       Handler: com.example.shortlink.StreamLambdaHandler::handleRequest
       CodeUri: target/shortlink-aws.jar
       Description: Spring Boot ShortLink API
+      Environment:
+        Variables:
+          SPRING_PROFILES_ACTIVE: lambda
+          TABLE_NAME: !Ref ShortLinksTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ShortLinksTable
       Events:
         Proxy:
           Type: HttpApi
@@ -40,3 +58,6 @@ Outputs:
   ApiEndpoint:
     Description: HTTP API endpoint
     Value: !Sub 'https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  TableName:
+    Description: DynamoDB table for short links
+    Value: !Ref ShortLinksTable

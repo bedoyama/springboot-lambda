@@ -1,6 +1,7 @@
 package com.example.shortlink.persistence;
 
 import com.example.shortlink.domain.Link;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -8,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Repository
+@Profile("local")
 public class InMemoryLinkRepository implements LinkRepository {
 
     private final ConcurrentHashMap<String, Link> links = new ConcurrentHashMap<>();
