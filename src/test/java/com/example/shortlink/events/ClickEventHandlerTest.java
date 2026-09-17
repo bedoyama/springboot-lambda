@@ -81,7 +81,7 @@ class ClickEventHandlerTest {
 
         SQSEvent event = new SQSEvent();
         SQSEvent.SQSMessage message = new SQSEvent.SQSMessage();
-        message.setBody(ClickEvent.now(code).toJson());
+        message.setBody(ClickEvent.now(code, "corr-from-api").toJson());
         event.setRecords(List.of(message));
 
         new ClickEventHandler(dynamoDbClient.client(), TABLE).handleRequest(event, null);

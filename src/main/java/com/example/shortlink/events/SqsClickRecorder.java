@@ -34,7 +34,8 @@ public class SqsClickRecorder implements ClickRecorder, Resource, AutoCloseable 
     public void record(String code) {
         sqs.sendMessage(request -> request
                 .queueUrl(queueUrl)
-                .messageBody(ClickEvent.now(code, MDC.get(MdcKeys.CORRELATION_ID)).toJson()));
+                .messageBody(ClickEvent.now(code, MDC.get(MdcKeys.CORRELATION_ID)).toJson())
+                .messageAttributes(AwsClientTracing.sqsTraceAttributes()));
     }
 
     @Override
