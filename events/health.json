@@ -1,0 +1,57 @@
+{
+  "resource": "/{proxy+}",
+  "path": "/health",
+  "httpMethod": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Host": "127.0.0.1:3000",
+    "User-Agent": "Custom User Agent String",
+    "X-Forwarded-Proto": "http"
+  },
+  "multiValueHeaders": {
+    "Accept": ["application/json"],
+    "Content-Type": ["application/json"],
+    "Host": ["127.0.0.1:3000"],
+    "User-Agent": ["Custom User Agent String"],
+    "X-Forwarded-Proto": ["http"]
+  },
+  "queryStringParameters": null,
+  "multiValueQueryStringParameters": null,
+  "pathParameters": {
+    "proxy": "health"
+  },
+  "stageVariables": null,
+  "requestContext": {
+    "resourceId": "123456",
+    "resourcePath": "/{proxy+}",
+    "httpMethod": "GET",
+    "extendedRequestId": "test-extended-request",
+    "requestTime": "17/Sep/2026:12:00:00 +0000",
+    "path": "/prod/health",
+    "accountId": "123456789012",
+    "protocol": "HTTP/1.1",
+    "stage": "prod",
+    "domainPrefix": "testPrefix",
+    "requestTimeEpoch": 1726588800000,
+    "requestId": "c6af9ac6-7b61-11e6-9a41-93e8deadbeef",
+    "identity": {
+      "cognitoIdentityPoolId": null,
+      "accountId": null,
+      "cognitoIdentityId": null,
+      "caller": null,
+      "sourceIp": "127.0.0.1",
+      "principalOrgId": null,
+      "accessKey": null,
+      "cognitoAuthenticationType": null,
+      "cognitoAuthenticationProvider": null,
+      "userArn": null,
+      "userAgent": "Custom User Agent String",
+      "user": null
+    },
+    "domainName": "127.0.0.1:3000",
+    "apiId": "1234567890"
+  },
+  "body": null,
+  "isBase64Encoded": false
+}
