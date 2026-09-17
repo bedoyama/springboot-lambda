@@ -147,6 +147,58 @@ Do **not** freeze into the snapshot: unique IDs, secrets, open connections. This
 
 GraalVM native can start even faster; it is a heavier build. This example stays on SnapStart.
 
+## Telemetry
+
+Three different ids, three jobs:
+
+| Id | Where | Use |
+|---|---|---|
+| `correlationId` | JSON logs + SQS body + `X-Request-Id` header | Grep both Lambdas for one user click even if X-Ray dropped the sample |
+| `requestId` | MDC + CloudWatch `REPORT` | One Lambda invoke |
+| X-Ray trace id | `AWSTraceHeader` on SQS | Service map: API → DynamoDB/SQS → worker |
+
+**Local:** `./mvnw spring-boot:run` prints Logstash JSON with `correlationId`. There is no X-Ray daemon and no CloudWatch agent, so traces and metrics stay on the laptop as no-ops / extra log lines.
+
+**After deploy:** logs, traces, and metrics are real.
+
+### Logs
+
+Pass your own id if you want a known grep key:
+
+```bash
+curl -sSI -H 'X-Request-Id: demo-1' "$API/r/$CODE"
+```
+
+CloudWatch Logs Insights, log group `/aws/lambda/<ShortlinkFunction>` (and the worker group):
+
+```
+fields @timestamp, correlationId, requestId, message
+| filter correlationId = "demo-1"
+| sort @timestamp asc
+```
+
+Same `correlationId` on the worker after the 302 (SQS is async).
+
+### Traces
+
+X-Ray samples. Not every request becomes a trace.
+
+1. Redirect once, wait a few seconds for the worker.
+2. Open **X-Ray → Traces** (or CloudWatch → Application monitoring → Traces).
+3. Open a trace for the API function. You should see DynamoDB GetItem and SQS send as **subsegments**.
+4. The worker is a later segment with the same trace id (parent = `AWSTraceHeader`). The 302 already returned; the gap is time, not identity.
+
+### Metrics
+
+Namespace **`ShortLink`**. Dimension **`function`** = `api` or `worker` only. Do not put `code` on a dimension (each value is a new time series and a bill).
+
+| Metric | Function |
+|---|---|
+| `Redirects`, `RedirectDuration` | api |
+| `ClicksRecorded`, `UnknownClickCode` | worker |
+
+CloudWatch Metrics → `ShortLink`. Metrics come from Embedded Metric Format log lines, not `PutMetricData`.
+
 ## When not to put Spring Boot on Lambda
 
 This pattern fits spiky HTTP APIs and event workers. Prefer ECS/Fargate, App Runner, or EC2 when:
@@ -170,4 +222,9 @@ DynamoDB (IAM, no pool) fits Lambda. RDS usually does not, unless you add someth
 | 5 | `feat: persist links in DynamoDB` | Why not RDS; `local` vs `lambda` profiles |
 | 6 | `perf: enable SnapStart and make init snapshot-safe` | `$LATEST` ignores SnapStart; reseed RNG; rebuild clients |
 | 7 | `feat: record clicks asynchronously with SQS` | HTTP Lambda vs event Lambda |
-| 8 | this README | How to run it, and when not to |
+| 8 | `docs: explain architecture, local vs Lambda, and when not to use this` | How to run it, and when not to |
+| T1 | `feat: add JSON logs and request correlation id` | MDC + `X-Request-Id`; logs you can grep |
+| T2 | `feat: enable X-Ray tracing on Lambda and AWS SDK calls` | Lambda segment + DynamoDB/SQS subsegments |
+| T3 | `feat: propagate trace context on click messages` | `AWSTraceHeader` across SQS |
+| T4 | `feat: emit redirect and click metrics` | EMF; low-cardinality dimensions |
+| T5 | this README (telemetry) | How to read logs, traces, and metrics |
