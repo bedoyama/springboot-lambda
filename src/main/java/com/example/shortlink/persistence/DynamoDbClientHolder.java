@@ -3,6 +3,7 @@ package com.example.shortlink.persistence;
 import org.crac.Context;
 import org.crac.Core;
 import org.crac.Resource;
+import com.example.shortlink.observability.AwsClientTracing;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -55,7 +56,8 @@ public class DynamoDbClientHolder implements Resource, AutoCloseable {
 
     private DynamoDbClient buildClient() {
         var builder = DynamoDbClient.builder()
-                .httpClient(UrlConnectionHttpClient.builder().build());
+                .httpClient(UrlConnectionHttpClient.builder().build())
+                .overrideConfiguration(AwsClientTracing.overrideConfig());
         if (endpoint != null && !endpoint.isBlank()) {
             builder.endpointOverride(URI.create(endpoint))
                     .region(Region.of(region))

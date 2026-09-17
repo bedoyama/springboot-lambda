@@ -1,6 +1,7 @@
 package com.example.shortlink.events;
 
 import com.example.shortlink.domain.ClickRecorder;
+import com.example.shortlink.observability.AwsClientTracing;
 import com.example.shortlink.observability.MdcKeys;
 import org.crac.Context;
 import org.crac.Core;
@@ -55,6 +56,7 @@ public class SqsClickRecorder implements ClickRecorder, Resource, AutoCloseable 
     private static SqsClient buildClient() {
         return SqsClient.builder()
                 .httpClient(UrlConnectionHttpClient.builder().build())
+                .overrideConfiguration(AwsClientTracing.overrideConfig())
                 .build();
     }
 

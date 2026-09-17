@@ -3,6 +3,7 @@ package com.example.shortlink.events;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.SQSEvent;
+import com.example.shortlink.observability.AwsClientTracing;
 import com.example.shortlink.persistence.DynamoDbClickIncrement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,7 @@ public class ClickEventHandler implements RequestHandler<SQSEvent, Void> {
     public ClickEventHandler() {
         this(DynamoDbClient.builder()
                 .httpClient(UrlConnectionHttpClient.builder().build())
+                .overrideConfiguration(AwsClientTracing.overrideConfig())
                 .build(),
                 System.getenv("TABLE_NAME"));
     }

@@ -9,6 +9,8 @@ Globals:
     MemorySize: 1024
     Architectures:
       - x86_64
+    # Creates the Lambda segment and adds AWSXRayDaemonWriteAccess.
+    Tracing: Active
 
 Resources:
   ShortLinksTable:
