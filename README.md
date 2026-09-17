@@ -1,67 +1,82 @@
 # ShortLink
 
-A URL shortener used as a teaching example for running Spring Boot on AWS Lambda.
+A URL shortener that shows how a familiar Spring Boot 4 REST app runs on AWS Lambda.
 
-The same `@RestController` beans run in two ways:
+The same `@RestController` beans run two ways:
 
-- Locally: `./mvnw spring-boot:run` starts embedded Tomcat (in-memory store, `local` profile; clicks increment immediately)
-- On Lambda: `StreamLambdaHandler` translates API Gateway events into HTTP. Redirects enqueue an SQS message; `ClickEventHandler` increments DynamoDB.
+- **Local:** `./mvnw spring-boot:run` (embedded Tomcat, in-memory store, clicks increment immediately)
+- **Lambda:** `StreamLambdaHandler` turns API Gateway events into HTTP. Redirects enqueue SQS; `ClickEventHandler` increments DynamoDB
 
-See [plan.md](plan.md) for the commit-by-commit path.
+The commit-by-commit path is in [plan.md](plan.md).
+
+```mermaid
+flowchart LR
+  client[Client] --> apigw[API Gateway HTTP API]
+  apigw --> apiFn[ShortLink API Lambda]
+  apiFn --> ddb[DynamoDB]
+  apiFn --> sqs[SQS clicks]
+  sqs --> clickFn[Click worker Lambda]
+  clickFn --> ddb
+```
+
+## API
+
+| Method | Path | Result |
+|---|---|---|
+| `GET` | `/health` | `200 {"status":"UP"}` |
+| `POST` | `/links` | `{ "url": "https://..." }` → `201` with `code`, `shortUrl`, `originalUrl` |
+| `GET` | `/r/{code}` | `302` to the original URL (records a click) |
+| `GET` | `/links/{code}` | `200` stats: `originalUrl`, `createdAt`, `clickCount` |
+
+Redirects live under `/r/` so they never collide with `/links` or `/health`. Short codes are 7-character base62, generated **per request**.
+
+On AWS, `clickCount` can lag the redirect by a short time (SQS is async). Locally it updates immediately.
 
 ## Prerequisites
 
 - Java 21
 - [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) for `sam build` / `sam deploy`
 - Docker for `./mvnw test` (DynamoDB Local via Testcontainers) and `sam local invoke`
+- An IAM user with programmatic access for deploy (not the account root)
 
 The Maven wrapper (`./mvnw`) is committed, so a local Maven install is optional.
 
 ## Run locally
 
-The default profile is `local`, so `spring-boot:run` does not need AWS credentials or DynamoDB.
+The default profile is `local`. No AWS credentials or DynamoDB required.
 
 ```bash
 ./mvnw test
 ./mvnw spring-boot:run
 ```
 
-Then:
-
 ```bash
 curl localhost:8080/health
-curl -i -X POST localhost:8080/links -H 'Content-Type: application/json' \
+curl -sS -X POST localhost:8080/links -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com"}'
-curl -i localhost:8080/r/<code>
+curl -sSI localhost:8080/r/<code>
 curl localhost:8080/links/<code>
 ```
 
-## Package for Lambda
+## Package and invoke locally as Lambda
 
-Spring Boot's executable jar puts classes under `BOOT-INF/`, which Lambda cannot load as a handler. `./mvnw package` also builds a shaded uber-jar at `target/shortlink-aws.jar` with classes at the root.
+Spring Boot's executable jar puts classes under `BOOT-INF/`, which Lambda cannot load as a handler. `./mvnw package` also builds `target/shortlink-aws.jar` with classes at the jar root.
 
 ```bash
 ./mvnw -DskipTests package
 sam build
-```
-
-`SkipBuild: true` in `template.yaml` tells SAM to use that jar as-is instead of compiling Java itself.
-
-`template.yaml` points one function at that jar. API Gateway HTTP API sends **every** path to it (`/{proxy+}` and `/`). Spring MVC routes `/health`, `/links`, and `/r/{code}` inside the process.
-
-HTTP API payload format is **1.0** so the event matches `AwsProxyRequest` used by `StreamLambdaHandler`. The default HTTP API payload (2.0) would not.
-
-Local invoke needs Docker:
-
-```bash
 sam local invoke ShortlinkFunction --event events/health.json
 ```
 
-`/health` works without DynamoDB. Create/redirect/stats in a real deploy need the table.
+`SkipBuild: true` in `template.yaml` tells SAM to use that jar instead of compiling Java itself.
+
+One API Lambda serves every HTTP route (`/{proxy+}` and `/`). Spring MVC routes inside the process. HTTP API **payload format 1.0** matches `AwsProxyRequest`. Format 2.0 would not.
+
+`/health` works without DynamoDB. Create/redirect/stats in AWS need the table and queue.
 
 ## Deploy
 
-First time:
+First time (creates `samconfig.toml`):
 
 ```bash
 ./mvnw -DskipTests package
@@ -69,7 +84,7 @@ sam build
 sam deploy --guided
 ```
 
-Later deploys reuse `samconfig.toml`:
+Later:
 
 ```bash
 ./mvnw -DskipTests package
@@ -77,78 +92,82 @@ sam build
 sam deploy
 ```
 
-SAM creates the HTTP API, the API Lambda (`live` alias, SnapStart on), an SQS queue, a click-worker Lambda, and a DynamoDB table. The API function gets `TABLE_NAME`, `CLICK_QUEUE_URL`, and `SPRING_PROFILES_ACTIVE=lambda`.
+The first SnapStart deploy can take several minutes: Lambda starts Spring, snapshots memory, then publishes version `live`.
 
-The first SnapStart deploy can take several minutes: Lambda initializes Spring, takes a snapshot, then publishes the version.
+Tear down when you are done (stops Lambda / API Gateway / DynamoDB / SQS charges):
+
+```bash
+sam delete --stack-name sam-app
+```
 
 ## Test in AWS
-
-After deploy, read the API URL (stack name and region come from `samconfig.toml` if you used `--guided`):
 
 ```bash
 sam list stack-outputs --stack-name sam-app --output table
 ```
 
-Or:
-
-```bash
-aws cloudformation describe-stacks \
-  --stack-name sam-app \
-  --query "Stacks[0].Outputs" \
-  --output table
-```
-
-Copy `ApiEndpoint` (no trailing slash) and run the same calls as locally. Do **not** add `-L` on the redirect; you want to see the 302.
+Copy `ApiEndpoint` (no trailing slash). Do **not** use `curl -L` on the redirect; you want the 302.
 
 ```bash
 API="https://xxxxxxxx.execute-api.us-east-2.amazonaws.com"
 
 curl -sS "$API/health"
-# {"status":"UP"}
 
 curl -sS -X POST "$API/links" -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com"}'
-# {"code":"...","shortUrl":"/r/...","originalUrl":"https://example.com"}
 
-# paste the code from the previous response
-CODE="REPLACE_ME"
-
+CODE="paste-the-code"
 curl -sSI "$API/r/$CODE"
-# HTTP/2 302
-# location: https://example.com
-
 curl -sS "$API/links/$CODE"
-# clickCount may still be 0 for a moment (SQS is async); retry until it is 1
+# retry stats until clickCount is 1
 ```
 
-If `/health` works but `POST /links` returns 500, the table name or IAM policy is wrong. Check:
+| Symptom | Where to look |
+|---|---|
+| `/health` fails | API Gateway / Lambda integration; `sam logs --stack-name sam-app --name ShortlinkFunction` |
+| `POST /links` is 500 | `TABLE_NAME` or DynamoDB IAM |
+| Redirect works, `clickCount` stays 0 | worker: `sam logs --stack-name sam-app --name ClickWorkerFunction --tail` |
 
-```bash
-sam logs --stack-name sam-app --name ShortlinkFunction --tail
-```
+After SnapStart has finished snapshotting, a **cold** invoke `REPORT` line should show `Restore Duration` (hundreds of ms), not a multi-second `Init Duration`. `$LATEST` never uses SnapStart; the HTTP API uses alias `live`.
 
-Wait until SnapStart has finished snapshotting (a minute or two after deploy), then look at a **cold** invoke's `REPORT` line in those logs:
+## Two Lambdas, one jar
 
-- Without SnapStart you see `Init Duration` (Spring Boot starting, often seconds).
-- With SnapStart you see `Restore Duration` instead (usually hundreds of milliseconds).
-- `$LATEST` never uses SnapStart. The HTTP API is wired to the `live` alias, which points at a published version.
+| Function | Handler | Trigger | Role |
+|---|---|---|---|
+| `ShortlinkFunction` | `StreamLambdaHandler` (Spring MVC) | HTTP API | Create, redirect, stats |
+| `ClickWorkerFunction` | `ClickEventHandler` (plain `RequestHandler`) | SQS | `ADD clickCount :one` |
+
+The API Lambda should return 302 quickly. It does not increment DynamoDB on the request path.
 
 ## SnapStart
 
-Java on Lambda is slow to start because of the JVM and Spring. SnapStart takes a memory snapshot **after** init and restores it on later cold starts.
+Java + Spring is slow to boot. SnapStart snapshots the initialized JVM and restores it on later cold starts.
 
-Unsafe at class-init (would be copied into every restore): unique IDs, secrets, open connections. This app generates short codes **per request**, reseeds `SecureRandom` on restore, and rebuilds the DynamoDB client on restore (CRaC `afterRestore`).
+Do **not** freeze into the snapshot: unique IDs, secrets, open connections. This app generates codes per request, reseeds `SecureRandom` on restore, and rebuilds DynamoDB/SQS clients on restore (CRaC `afterRestore`).
 
-GraalVM native can start even faster but is a much heavier build. This example stays on SnapStart.
+GraalVM native can start even faster; it is a heavier build. This example stays on SnapStart.
 
-## Clicks are asynchronous
+## When not to put Spring Boot on Lambda
 
-The HTTP Lambda should return the 302 quickly. On AWS it sends `{ code, clickedAt }` to SQS instead of incrementing DynamoDB inline. A second function, `ClickEventHandler`, is a plain `RequestHandler` (no Spring MVC) that performs `ADD clickCount :one`.
+This pattern fits spiky HTTP APIs and event workers. Prefer ECS/Fargate, App Runner, or EC2 when:
 
-Locally (`local` profile) there is no SQS: clicks still increment in process so `./mvnw spring-boot:run` stays self-contained.
+- You need long-lived connections (RDS/Hikari connection pools, WebSockets, gRPC streams)
+- The app is a large monolith; even SnapStart restore plus a fat jar is the wrong cost model
+- Traffic is high and steady 24/7, so always-on compute is cheaper than per-invoke Lambda
+- Every request must be well under SnapStart restore time and you do not want Provisioned Concurrency
 
-If stats stay at 0 after a redirect in AWS, check the worker:
+DynamoDB (IAM, no pool) fits Lambda. RDS usually does not, unless you add something like RDS Proxy and accept the extra moving parts.
 
-```bash
-sam logs --stack-name sam-app --name ClickWorkerFunction --tail
-```
+## What each commit taught
+
+| Step | Commit | Lesson |
+|---|---|---|
+| 0 | `docs: add commit-by-commit plan and gitignore` | Plan and ignore editor/build junk before code |
+| 1 | `chore: scaffold Spring Boot 4 app with health endpoint` | This is still a normal Boot app (Boot 4 uses `starter-webmvc`) |
+| 2 | `feat: add in-memory create, redirect, and stats API` | Controller / service / repository so storage can change later |
+| 3 | `feat: proxy API Gateway events through Serverless Java Container` | Same controllers; static handler = cold start vs warm invoke |
+| 4 | `build: package the app as a SAM Lambda with HTTP API` | Shade jar (not `BOOT-INF`); one function, Spring routes |
+| 5 | `feat: persist links in DynamoDB` | Why not RDS; `local` vs `lambda` profiles |
+| 6 | `perf: enable SnapStart and make init snapshot-safe` | `$LATEST` ignores SnapStart; reseed RNG; rebuild clients |
+| 7 | `feat: record clicks asynchronously with SQS` | HTTP Lambda vs event Lambda |
+| 8 | this README | How to run it, and when not to |
