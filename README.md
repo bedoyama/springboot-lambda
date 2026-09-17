@@ -7,11 +7,13 @@ The same `@RestController` beans run in two ways:
 - Locally: `./mvnw spring-boot:run` starts embedded Tomcat
 - On Lambda: `StreamLambdaHandler` translates API Gateway events into HTTP and dispatches them to Spring
 
-Packaging and deploy come in later steps. See [plan.md](plan.md).
+See [plan.md](plan.md) for the commit-by-commit path.
 
 ## Prerequisites
 
 - Java 21
+- [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html) for `sam build`
+- Docker, only if you want `sam local invoke`
 
 The Maven wrapper (`./mvnw`) is committed, so a local Maven install is optional.
 
@@ -30,4 +32,27 @@ curl -i -X POST localhost:8080/links -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com"}'
 curl -i localhost:8080/r/<code>
 curl localhost:8080/links/<code>
+
+## Package for Lambda
+
+Spring Boot's executable jar puts classes under `BOOT-INF/`, which Lambda cannot load as a handler. `./mvnw package` also builds a shaded uber-jar at `target/shortlink-aws.jar` with classes at the root.
+
+```bash
+./mvnw -DskipTests package
+sam build
+```
+
+`SkipBuild: true` in `template.yaml` tells SAM to use that jar as-is instead of compiling Java itself.
+
+`template.yaml` points one function at that jar. API Gateway HTTP API sends **every** path to it (`/{proxy+}` and `/`). Spring MVC routes `/health`, `/links`, and `/r/{code}` inside the process.
+
+HTTP API payload format is **1.0** so the event matches `AwsProxyRequest` used by `StreamLambdaHandler`. The default HTTP API payload (2.0) would not.
+
+Local invoke needs Docker:
+
+```bash
+sam local invoke ShortlinkFunction --event events/health.json
+```
+
+This step does not deploy to AWS.
 ```

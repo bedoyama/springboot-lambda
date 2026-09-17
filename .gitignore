@@ -25,3 +25,6 @@ replay_pid*
 
 # Keep the Maven Wrapper jar so ./mvnw works without a local Maven install
 !.mvn/wrapper/maven-wrapper.jar
+
+# SAM build output
+.aws-sam/

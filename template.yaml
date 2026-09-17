@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ShortLink Spring Boot API on AWS Lambda
+
+Globals:
+  Function:
+    Runtime: java21
+    Timeout: 20
+    MemorySize: 1024
+    Architectures:
+      - x86_64
+
+Resources:
+  ShortlinkFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      # Maven already produced target/shortlink-aws.jar; do not run mvn again.
+      SkipBuild: true
+    Properties:
+      Handler: com.example.shortlink.StreamLambdaHandler::handleRequest
+      CodeUri: target/shortlink-aws.jar
+      Description: Spring Boot ShortLink API
+      Events:
+        Proxy:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            PayloadFormatVersion: '1.0'
+            TimeoutInMillis: 20000
+        Root:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+            PayloadFormatVersion: '1.0'
+            TimeoutInMillis: 20000
+
+Outputs:
+  ApiEndpoint:
+    Description: HTTP API endpoint
+    Value: !Sub 'https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com'
