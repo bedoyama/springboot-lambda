@@ -6,6 +6,8 @@ import com.amazonaws.serverless.proxy.model.AwsProxyResponse;
 import com.amazonaws.serverless.proxy.spring.SpringBootLambdaContainerHandler;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
+import com.example.shortlink.observability.MdcKeys;
+import org.slf4j.MDC;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,6 +34,13 @@ public class StreamLambdaHandler implements RequestStreamHandler {
 
     @Override
     public void handleRequest(InputStream input, OutputStream output, Context context) throws IOException {
-        HANDLER.proxyStream(input, output, context);
+        if (context != null && context.getAwsRequestId() != null) {
+            MDC.put(MdcKeys.REQUEST_ID, context.getAwsRequestId());
+        }
+        try {
+            HANDLER.proxyStream(input, output, context);
+        } finally {
+            MDC.clear();
+        }
     }
 }

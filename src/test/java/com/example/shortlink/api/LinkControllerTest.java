@@ -11,6 +11,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.hamcrest.Matchers.matchesPattern;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.emptyString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -34,6 +36,7 @@ class LinkControllerTest {
                 .andExpect(jsonPath("$.code").value(matchesPattern("[0-9A-Za-z]{7}")))
                 .andExpect(jsonPath("$.shortUrl").value(matchesPattern("/r/[0-9A-Za-z]{7}")))
                 .andExpect(jsonPath("$.originalUrl").value("https://example.com/article"))
+                .andExpect(header().string(CorrelationIdFilter.HEADER, not(emptyString())))
                 .andReturn();
 
         String code = JsonPath.read(created.getResponse().getContentAsString(), "$.code");
@@ -42,9 +45,10 @@ class LinkControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.clickCount").value(0));
 
-        mockMvc.perform(get("/r/" + code))
+        mockMvc.perform(get("/r/" + code).header(CorrelationIdFilter.HEADER, "test-correlation"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", "https://example.com/article"));
+                .andExpect(header().string("Location", "https://example.com/article"))
+                .andExpect(header().string(CorrelationIdFilter.HEADER, "test-correlation"));
 
         mockMvc.perform(get("/links/" + code))
                 .andExpect(status().isOk())

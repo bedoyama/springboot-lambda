@@ -36,9 +36,17 @@ public class ClickEventHandler implements RequestHandler<SQSEvent, Void> {
     public Void handleRequest(SQSEvent event, Context context) {
         for (SQSEvent.SQSMessage message : event.getRecords()) {
             ClickEvent click = ClickEvent.fromJson(message.getBody());
+            log.info(
+                    "Recording click code={} correlationId={} messageId={}",
+                    click.code(),
+                    click.correlationId(),
+                    message.getMessageId());
             boolean updated = DynamoDbClickIncrement.increment(dynamoDb, tableName, click.code()).isPresent();
             if (!updated) {
-                log.warn("Click for unknown code {}, dropping message", click.code());
+                log.warn(
+                        "Click for unknown code {} correlationId={}, dropping message",
+                        click.code(),
+                        click.correlationId());
             }
         }
         return null;

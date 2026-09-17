@@ -1,11 +1,13 @@
 package com.example.shortlink.events;
 
 import com.example.shortlink.domain.ClickRecorder;
+import com.example.shortlink.observability.MdcKeys;
 import org.crac.Context;
 import org.crac.Core;
 import org.crac.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -31,7 +33,7 @@ public class SqsClickRecorder implements ClickRecorder, Resource, AutoCloseable 
     public void record(String code) {
         sqs.sendMessage(request -> request
                 .queueUrl(queueUrl)
-                .messageBody(ClickEvent.now(code).toJson()));
+                .messageBody(ClickEvent.now(code, MDC.get(MdcKeys.CORRELATION_ID)).toJson()));
     }
 
     @Override
