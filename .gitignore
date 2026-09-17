@@ -22,3 +22,6 @@ target/
 *.ear
 hs_err_pid*
 replay_pid*
+
+# Keep the Maven Wrapper jar so ./mvnw works without a local Maven install
+!.mvn/wrapper/maven-wrapper.jar
