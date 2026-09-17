@@ -4,8 +4,8 @@ A URL shortener used as a teaching example for running Spring Boot on AWS Lambda
 
 The same `@RestController` beans run in two ways:
 
-- Locally: `./mvnw spring-boot:run` starts embedded Tomcat (in-memory store, `local` profile)
-- On Lambda: `StreamLambdaHandler` translates API Gateway events into HTTP and dispatches them to Spring (DynamoDB)
+- Locally: `./mvnw spring-boot:run` starts embedded Tomcat (in-memory store, `local` profile; clicks increment immediately)
+- On Lambda: `StreamLambdaHandler` translates API Gateway events into HTTP. Redirects enqueue an SQS message; `ClickEventHandler` increments DynamoDB.
 
 See [plan.md](plan.md) for the commit-by-commit path.
 
@@ -77,7 +77,7 @@ sam build
 sam deploy
 ```
 
-SAM creates the HTTP API, Lambda (published version + `live` alias, SnapStart on), and a DynamoDB table. The function gets `TABLE_NAME` and `SPRING_PROFILES_ACTIVE=lambda`.
+SAM creates the HTTP API, the API Lambda (`live` alias, SnapStart on), an SQS queue, a click-worker Lambda, and a DynamoDB table. The API function gets `TABLE_NAME`, `CLICK_QUEUE_URL`, and `SPRING_PROFILES_ACTIVE=lambda`.
 
 The first SnapStart deploy can take several minutes: Lambda initializes Spring, takes a snapshot, then publishes the version.
 
@@ -118,7 +118,7 @@ curl -sSI "$API/r/$CODE"
 # location: https://example.com
 
 curl -sS "$API/links/$CODE"
-# {"originalUrl":"https://example.com","createdAt":"...","clickCount":1}
+# clickCount may still be 0 for a moment (SQS is async); retry until it is 1
 ```
 
 If `/health` works but `POST /links` returns 500, the table name or IAM policy is wrong. Check:
@@ -140,3 +140,15 @@ Java on Lambda is slow to start because of the JVM and Spring. SnapStart takes a
 Unsafe at class-init (would be copied into every restore): unique IDs, secrets, open connections. This app generates short codes **per request**, reseeds `SecureRandom` on restore, and rebuilds the DynamoDB client on restore (CRaC `afterRestore`).
 
 GraalVM native can start even faster but is a much heavier build. This example stays on SnapStart.
+
+## Clicks are asynchronous
+
+The HTTP Lambda should return the 302 quickly. On AWS it sends `{ code, clickedAt }` to SQS instead of incrementing DynamoDB inline. A second function, `ClickEventHandler`, is a plain `RequestHandler` (no Spring MVC) that performs `ADD clickCount :one`.
+
+Locally (`local` profile) there is no SQS: clicks still increment in process so `./mvnw spring-boot:run` stays self-contained.
+
+If stats stay at 0 after a redirect in AWS, check the worker:
+
+```bash
+sam logs --stack-name sam-app --name ClickWorkerFunction --tail
+```

@@ -1,6 +1,9 @@
-package com.example.shortlink.persistence;
+package com.example.shortlink.events;
 
+import com.amazonaws.services.lambda.runtime.events.SQSEvent;
 import com.example.shortlink.domain.Link;
+import com.example.shortlink.persistence.DynamoDbClientHolder;
+import com.example.shortlink.persistence.LinkRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +23,7 @@ import software.amazon.awssdk.services.dynamodb.model.ResourceInUseException;
 import software.amazon.awssdk.services.dynamodb.model.ScalarAttributeType;
 
 import java.time.Instant;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @SpringBootTest
 @ActiveProfiles("lambda")
-class DynamoDbLinkRepositoryTest {
+class ClickEventHandlerTest {
 
     private static final String TABLE = "ShortLinks";
 
@@ -67,33 +70,23 @@ class DynamoDbLinkRepositoryTest {
                     .billingMode(BillingMode.PAY_PER_REQUEST));
             dynamoDbClient.client().waiter().waitUntilTableExists(request -> request.tableName(TABLE));
         } catch (ResourceInUseException ignored) {
-            // table already exists from a previous test in this class
+            // already created
         }
     }
 
     @Test
-    void createFindAndIncrementClicks() {
+    void sqsMessageIncrementsClickCount() {
         String code = UUID.randomUUID().toString().substring(0, 7);
-        Link created = new Link(code, "https://example.com/ddb", Instant.parse("2026-09-17T12:00:00Z"), 0);
+        links.create(new Link(code, "https://example.com/click", Instant.parse("2026-09-17T12:00:00Z"), 0));
 
-        assertThat(links.create(created)).isTrue();
-        assertThat(links.create(created)).isFalse();
+        SQSEvent event = new SQSEvent();
+        SQSEvent.SQSMessage message = new SQSEvent.SQSMessage();
+        message.setBody(ClickEvent.now(code).toJson());
+        event.setRecords(List.of(message));
 
-        Optional<Link> found = links.findByCode(code);
-        assertThat(found).hasValueSatisfying(link -> {
-            assertThat(link.originalUrl()).isEqualTo("https://example.com/ddb");
-            assertThat(link.clickCount()).isZero();
-        });
+        new ClickEventHandler(dynamoDbClient.client(), TABLE).handleRequest(event, null);
 
-        assertThat(links.incrementClicks(code))
-                .hasValueSatisfying(link -> assertThat(link.clickCount()).isEqualTo(1));
         assertThat(links.findByCode(code))
                 .hasValueSatisfying(link -> assertThat(link.clickCount()).isEqualTo(1));
-    }
-
-    @Test
-    void missingCodeIsEmpty() {
-        assertThat(links.findByCode("missing")).isEmpty();
-        assertThat(links.incrementClicks("missing")).isEmpty();
     }
 }

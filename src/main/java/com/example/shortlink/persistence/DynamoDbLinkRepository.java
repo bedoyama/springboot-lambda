@@ -7,8 +7,6 @@ import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
-import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
-import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
 
 import java.time.Instant;
 import java.util.Map;
@@ -60,19 +58,8 @@ public class DynamoDbLinkRepository implements LinkRepository {
 
     @Override
     public Optional<Link> incrementClicks(String code) {
-        try {
-            UpdateItemResponse response = dynamoDb.client().updateItem(request -> request
-                    .tableName(tableName)
-                    .key(key(code))
-                    .updateExpression("ADD clickCount :one")
-                    .conditionExpression("attribute_exists(#code)")
-                    .expressionAttributeNames(Map.of("#code", CODE))
-                    .expressionAttributeValues(Map.of(":one", AttributeValue.fromN("1")))
-                    .returnValues(ReturnValue.ALL_NEW));
-            return Optional.of(fromItem(response.attributes()));
-        } catch (ConditionalCheckFailedException e) {
-            return Optional.empty();
-        }
+        return DynamoDbClickIncrement.increment(dynamoDb.client(), tableName, code)
+                .map(DynamoDbLinkRepository::fromItem);
     }
 
     private static Map<String, AttributeValue> key(String code) {

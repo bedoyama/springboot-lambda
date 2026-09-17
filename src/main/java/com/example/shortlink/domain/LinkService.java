@@ -12,10 +12,12 @@ public class LinkService {
 
     private final LinkRepository links;
     private final ShortCodeGenerator codes;
+    private final ClickRecorder clicks;
 
-    public LinkService(LinkRepository links, ShortCodeGenerator codes) {
+    public LinkService(LinkRepository links, ShortCodeGenerator codes, ClickRecorder clicks) {
         this.links = links;
         this.codes = codes;
+        this.clicks = clicks;
     }
 
     public Link create(String url) {
@@ -33,6 +35,8 @@ public class LinkService {
     }
 
     public Link redirect(String code) {
-        return links.incrementClicks(code).orElseThrow(() -> new LinkNotFoundException(code));
+        Link link = links.findByCode(code).orElseThrow(() -> new LinkNotFoundException(code));
+        clicks.record(code);
+        return link;
     }
 }
