@@ -31,6 +31,10 @@ Resources:
       Handler: com.example.shortlink.StreamLambdaHandler::handleRequest
       CodeUri: target/shortlink-aws.jar
       Description: Spring Boot ShortLink API
+      # SnapStart only applies to published versions, never $LATEST.
+      AutoPublishAlias: live
+      SnapStart:
+        ApplyOn: PublishedVersions
       Environment:
         Variables:
           SPRING_PROFILES_ACTIVE: lambda

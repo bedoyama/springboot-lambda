@@ -12,7 +12,6 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
-import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeDefinition;
 import software.amazon.awssdk.services.dynamodb.model.BillingMode;
 import software.amazon.awssdk.services.dynamodb.model.KeySchemaElement;
@@ -46,7 +45,7 @@ class DynamoDbLinkRepositoryTest {
     }
 
     @Autowired
-    private DynamoDbClient dynamoDbClient;
+    private DynamoDbClientHolder dynamoDbClient;
 
     @Autowired
     private LinkRepository links;
@@ -54,7 +53,7 @@ class DynamoDbLinkRepositoryTest {
     @BeforeEach
     void createTable() {
         try {
-            dynamoDbClient.createTable(request -> request
+            dynamoDbClient.client().createTable(request -> request
                     .tableName(TABLE)
                     .attributeDefinitions(AttributeDefinition.builder()
                             .attributeName("code")
@@ -65,7 +64,7 @@ class DynamoDbLinkRepositoryTest {
                             .keyType(KeyType.HASH)
                             .build())
                     .billingMode(BillingMode.PAY_PER_REQUEST));
-            dynamoDbClient.waiter().waitUntilTableExists(request -> request.tableName(TABLE));
+            dynamoDbClient.client().waiter().waitUntilTableExists(request -> request.tableName(TABLE));
         } catch (ResourceInUseException ignored) {
             // table already exists from a previous test in this class
         }

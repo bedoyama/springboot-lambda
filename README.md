@@ -61,12 +61,82 @@ sam local invoke ShortlinkFunction --event events/health.json
 
 ## Deploy
 
+First time:
+
 ```bash
 ./mvnw -DskipTests package
 sam build
 sam deploy --guided
 ```
 
-SAM creates the HTTP API, Lambda, and a DynamoDB table (`PAY_PER_REQUEST`, partition key `code`). The function gets `TABLE_NAME` and `SPRING_PROFILES_ACTIVE=lambda`.
+Later deploys reuse `samconfig.toml`:
 
-Curl the `ApiEndpoint` output the same way as the local commands above.
+```bash
+./mvnw -DskipTests package
+sam build
+sam deploy
+```
+
+SAM creates the HTTP API, Lambda (published version + `live` alias, SnapStart on), and a DynamoDB table. The function gets `TABLE_NAME` and `SPRING_PROFILES_ACTIVE=lambda`.
+
+The first SnapStart deploy can take several minutes: Lambda initializes Spring, takes a snapshot, then publishes the version.
+
+## Test in AWS
+
+After deploy, read the API URL (stack name and region come from `samconfig.toml` if you used `--guided`):
+
+```bash
+sam list stack-outputs --stack-name sam-app --output table
+```
+
+Or:
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name sam-app \
+  --query "Stacks[0].Outputs" \
+  --output table
+```
+
+Copy `ApiEndpoint` (no trailing slash) and run the same calls as locally. Do **not** add `-L` on the redirect; you want to see the 302.
+
+```bash
+API="https://xxxxxxxx.execute-api.us-east-2.amazonaws.com"
+
+curl -sS "$API/health"
+# {"status":"UP"}
+
+curl -sS -X POST "$API/links" -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com"}'
+# {"code":"...","shortUrl":"/r/...","originalUrl":"https://example.com"}
+
+# paste the code from the previous response
+CODE="REPLACE_ME"
+
+curl -sSI "$API/r/$CODE"
+# HTTP/2 302
+# location: https://example.com
+
+curl -sS "$API/links/$CODE"
+# {"originalUrl":"https://example.com","createdAt":"...","clickCount":1}
+```
+
+If `/health` works but `POST /links` returns 500, the table name or IAM policy is wrong. Check:
+
+```bash
+sam logs --stack-name sam-app --name ShortlinkFunction --tail
+```
+
+Wait until SnapStart has finished snapshotting (a minute or two after deploy), then look at a **cold** invoke's `REPORT` line in those logs:
+
+- Without SnapStart you see `Init Duration` (Spring Boot starting, often seconds).
+- With SnapStart you see `Restore Duration` instead (usually hundreds of milliseconds).
+- `$LATEST` never uses SnapStart. The HTTP API is wired to the `live` alias, which points at a published version.
+
+## SnapStart
+
+Java on Lambda is slow to start because of the JVM and Spring. SnapStart takes a memory snapshot **after** init and restores it on later cold starts.
+
+Unsafe at class-init (would be copied into every restore): unique IDs, secrets, open connections. This app generates short codes **per request**, reseeds `SecureRandom` on restore, and rebuilds the DynamoDB client on restore (CRaC `afterRestore`).
+
+GraalVM native can start even faster but is a much heavier build. This example stays on SnapStart.

@@ -4,7 +4,6 @@ import com.example.shortlink.domain.Link;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
-import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.GetItemResponse;
@@ -24,11 +23,11 @@ public class DynamoDbLinkRepository implements LinkRepository {
     private static final String CREATED_AT = "createdAt";
     private static final String CLICK_COUNT = "clickCount";
 
-    private final DynamoDbClient dynamoDb;
+    private final DynamoDbClientHolder dynamoDb;
     private final String tableName;
 
     public DynamoDbLinkRepository(
-            DynamoDbClient dynamoDb,
+            DynamoDbClientHolder dynamoDb,
             @Value("${app.dynamodb.table-name}") String tableName) {
         this.dynamoDb = dynamoDb;
         this.tableName = tableName;
@@ -37,7 +36,7 @@ public class DynamoDbLinkRepository implements LinkRepository {
     @Override
     public boolean create(Link link) {
         try {
-            dynamoDb.putItem(request -> request
+            dynamoDb.client().putItem(request -> request
                     .tableName(tableName)
                     .item(toItem(link))
                     .conditionExpression("attribute_not_exists(#code)")
@@ -50,7 +49,7 @@ public class DynamoDbLinkRepository implements LinkRepository {
 
     @Override
     public Optional<Link> findByCode(String code) {
-        GetItemResponse response = dynamoDb.getItem(request -> request
+        GetItemResponse response = dynamoDb.client().getItem(request -> request
                 .tableName(tableName)
                 .key(key(code)));
         if (!response.hasItem() || response.item().isEmpty()) {
@@ -62,7 +61,7 @@ public class DynamoDbLinkRepository implements LinkRepository {
     @Override
     public Optional<Link> incrementClicks(String code) {
         try {
-            UpdateItemResponse response = dynamoDb.updateItem(request -> request
+            UpdateItemResponse response = dynamoDb.client().updateItem(request -> request
                     .tableName(tableName)
                     .key(key(code))
                     .updateExpression("ADD clickCount :one")
