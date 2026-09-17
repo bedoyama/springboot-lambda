@@ -21,6 +21,8 @@ Then:
 
 ```bash
 curl localhost:8080/health
+curl -i -X POST localhost:8080/links -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com"}'
+curl -i localhost:8080/r/<code>
+curl localhost:8080/links/<code>
 ```
-
-Expected response: `{"status":"UP"}`
