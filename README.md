@@ -228,3 +228,7 @@ DynamoDB (IAM, no pool) fits Lambda. RDS usually does not, unless you add someth
 | T3 | `feat: propagate trace context on click messages` | `AWSTraceHeader` across SQS |
 | T4 | `feat: emit redirect and click metrics` | EMF; low-cardinality dimensions |
 | T5 | this README (telemetry) | How to read logs, traces, and metrics |
+
+## License
+
+[Apache License 2.0](LICENSE)

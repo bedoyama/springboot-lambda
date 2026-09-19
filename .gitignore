@@ -28,3 +28,6 @@ replay_pid*
 
 # SAM build output
 .aws-sam/
+
+# Local SAM deploy config (stack name, region). Not secrets, but machine-specific.
+samconfig.toml
